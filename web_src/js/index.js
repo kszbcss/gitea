@@ -896,7 +896,7 @@ async function initRepository() {
     });
 
     // Quote reply
-    $('.quote-reply').on('click', function (event) {
+    $(document).on('click', '.quote-reply', function (event) {
       $(this).closest('.dropdown').find('.menu').toggle('visible');
       const target = $(this).data('target');
       const quote = $(`#comment-${target}`).text().replace(/\n/g, '\n> ');
@@ -924,7 +924,7 @@ async function initRepository() {
     });
 
     // Edit issue or comment content
-    $('.edit-content').on('click', async function (event) {
+    $(document).on('click', '.edit-content', async function (event) {
       $(this).closest('.dropdown').find('.menu').toggle('visible');
       const $segment = $(this).closest('.header').next();
       const $editContentZone = $segment.find('.edit-content-zone');
@@ -1088,7 +1088,7 @@ async function initRepository() {
     });
 
     // Delete comment
-    $('.delete-comment').on('click', function () {
+    $(document).on('click', '.delete-comment', function () {
       const $this = $(this);
       if (window.confirm($this.data('locale'))) {
         $.post($this.data('url'), {
@@ -1097,6 +1097,15 @@ async function initRepository() {
           const $conversationHolder = $this.closest('.conversation-holder');
           $(`#${$this.data('comment-id')}`).remove();
           if ($conversationHolder.length && !$conversationHolder.find('.comment').length) {
+            const path = $conversationHolder.data('path');
+            const side = $conversationHolder.data('side');
+            const idx = $conversationHolder.data('idx');
+            const lineType = $conversationHolder.closest('tr').data('line-type');
+            if (lineType === 'same') {
+              $(`a.add-code-comment[data-path="${path}"][data-idx="${idx}"]`).removeClass('invisible');
+            } else {
+              $(`a.add-code-comment[data-path="${path}"][data-side="${side}"][data-idx="${idx}"]`).removeClass('invisible');
+            }
             $conversationHolder.remove();
           }
         });
@@ -1218,7 +1227,7 @@ function initPullRequestReview() {
     }
   }
 
-  $('.show-outdated').on('click', function (e) {
+  $(document).on('click', '.show-outdated', function (e) {
     e.preventDefault();
     const id = $(this).data('comment');
     $(this).addClass('hide');
@@ -1227,7 +1236,7 @@ function initPullRequestReview() {
     $(`#hide-outdated-${id}`).removeClass('hide');
   });
 
-  $('.hide-outdated').on('click', function (e) {
+  $(document).on('click', '.hide-outdated', function (e) {
     e.preventDefault();
     const id = $(this).data('comment');
     $(this).addClass('hide');
@@ -1236,7 +1245,7 @@ function initPullRequestReview() {
     $(`#show-outdated-${id}`).removeClass('hide');
   });
 
-  $('button.comment-form-reply').on('click', function (e) {
+  $(document).on('click', 'button.comment-form-reply', function (e) {
     e.preventDefault();
     $(this).hide();
     const form = $(this).parent().find('.comment-form');
@@ -1268,7 +1277,7 @@ function initPullRequestReview() {
       $(this).closest('.menu').toggle('visible');
     });
 
-  $('.add-code-comment').on('click', function (e) {
+  $('a.add-code-comment').on('click', function (e) {
     if ($(e.target).hasClass('btn-add-single')) return; // https://github.com/go-gitea/gitea/issues/4745
     e.preventDefault();
 
@@ -1276,18 +1285,13 @@ function initPullRequestReview() {
     const side = $(this).data('side');
     const idx = $(this).data('idx');
     const path = $(this).data('path');
-    const form = $('#pull_review_add_comment').html();
     const tr = $(this).closest('tr');
-
-    const oldLineNum = tr.find('.lines-num-old').data('line-num');
-    const newLineNum = tr.find('.lines-num-new').data('line-num');
-    const addCommentKey = `${oldLineNum}|${newLineNum}`;
-    if (document.querySelector(`[data-add-comment-key="${addCommentKey}"]`)) return; // don't add same comment box twice
+    const lineType = tr.data('line-type');
 
     let ntr = tr.next();
     if (!ntr.hasClass('add-comment')) {
       ntr = $(`
-        <tr class="add-comment" data-add-comment-key="${addCommentKey}">
+        <tr class="add-comment" data-line-type="${lineType}">
           ${isSplit ? `
             <td class="lines-num"></td>
             <td class="lines-type-marker"></td>
@@ -1296,8 +1300,7 @@ function initPullRequestReview() {
             <td class="lines-type-marker"></td>
             <td class="add-comment-right"></td>
           ` : `
-            <td class="lines-num"></td>
-            <td class="lines-num"></td>
+            <td colspan="2" class="lines-num"></td>
             <td class="add-comment-left add-comment-right" colspan="2"></td>
           `}
         </tr>`);
@@ -1306,21 +1309,24 @@ function initPullRequestReview() {
 
     const td = ntr.find(`.add-comment-${side}`);
     let commentCloud = td.find('.comment-code-cloud');
-    if (commentCloud.length === 0) {
-      td.html(form);
-      commentCloud = td.find('.comment-code-cloud');
-      assingMenuAttributes(commentCloud.find('.menu'));
-
-      td.find("input[name='line']").val(idx);
-      td.find("input[name='side']").val(side === 'left' ? 'previous' : 'proposed');
-      td.find("input[name='path']").val(path);
+    if (commentCloud.length === 0 && !ntr.find('button[name="is_review"]').length) {
+      const url = $(this).data('new-comment-url');
+      $.post(url, {
+        _csrf: csrf
+      }, (data) => {
+        td.html(data);
+        commentCloud = td.find('.comment-code-cloud');
+        assingMenuAttributes(commentCloud.find('.menu'));
+        td.find("input[name='line']").val(idx);
+        td.find("input[name='side']").val(side === 'left' ? 'previous' : 'proposed');
+        td.find("input[name='path']").val(path);
+        const $textarea = commentCloud.find('textarea');
+        attachTribute($textarea.get(), {mentions: true, emoji: true});
+        const $simplemde = setCommentSimpleMDE($textarea);
+        $textarea.focus();
+        $simplemde.codemirror.focus();
+      });
     }
-    const $textarea = commentCloud.find('textarea');
-    attachTribute($textarea.get(), {mentions: true, emoji: true});
-
-    const $simplemde = setCommentSimpleMDE($textarea);
-    $textarea.focus();
-    $simplemde.codemirror.focus();
   });
 }
 
@@ -2481,17 +2487,28 @@ $(document).ready(async () => {
     $(e).trigger('click');
   });
 
-  $('.resolve-conversation').on('click', function (e) {
+  $(document).on('click', '.resolve-conversation', function (e) {
     e.preventDefault();
     const id = $(this).data('comment-id');
+    const origin = $(this).data('origin');
     const action = $(this).data('action');
     const url = $(this).data('update-url');
 
     $.post(url, {
       _csrf: csrf,
+      origin,
       action,
       comment_id: id,
-    }).then(reload);
+    }, (data) => {
+      const conversation = $(data);
+      if ($(this).closest('.conversation-holder').replaceWith(conversation)) {
+        conversation.find('.dropdown').dropdown();
+        initReactionSelector(conversation);
+        initClipboard();
+      } else {
+        reload();
+      }
+    });
   });
 
   buttonsClickOnEnter();
@@ -3598,6 +3615,32 @@ function initIssueList() {
     }
   });
 }
+
+$(document).on('click', 'button[name="is_review"]', (e) => {
+  $(e.target).closest('form').append('<input type="hidden" name="is_review" value="true">');
+});
+
+$(document).on('submit', '.conversation-holder form', (e) => {
+  e.preventDefault();
+  const form = $(e.target);
+  $.post(form.attr('action'), form.serialize(), (data) => {
+    const conversation = $(data);
+    const path = conversation.data('path');
+    const side = conversation.data('side');
+    const idx = conversation.data('idx');
+    const lineType = form.closest('tr').data('line-type');
+    form.closest('.conversation-holder').replaceWith(conversation);
+    if (lineType === 'same') {
+      $(`a.add-code-comment[data-path="${path}"][data-idx="${idx}"]`).addClass('invisible');
+    } else {
+      $(`a.add-code-comment[data-path="${path}"][data-side="${side}"][data-idx="${idx}"]`).addClass('invisible');
+    }
+    conversation.find('.dropdown').dropdown();
+    initReactionSelector(conversation);
+    initClipboard();
+  });
+});
+
 window.cancelCodeComment = function (btn) {
   const form = $(btn).closest('form');
   if (form.length > 0 && form.hasClass('comment-form')) {
@@ -3605,13 +3648,6 @@ window.cancelCodeComment = function (btn) {
     form.parent().find('button.comment-form-reply').show();
   } else {
     form.closest('.comment-code-cloud').remove();
-  }
-};
-
-window.submitReply = function (btn) {
-  const form = $(btn).closest('form');
-  if (form.length > 0 && form.hasClass('comment-form')) {
-    form.trigger('submit');
   }
 };
 
